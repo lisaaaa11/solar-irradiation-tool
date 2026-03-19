@@ -67,10 +67,16 @@ def load_month(year, month):
 
     grid = parse_asc_from_zip(response.content)
 
+    mid = grid.shape[0] // 2
+    north = grid[:mid, :]
+    south = grid[mid:, :]
+
     result = {
         "year": year,
         "month": month,
         "avg_radiation": float(np.nanmean(grid)),
+        "north_avg": float(np.nanmean(north)),
+        "south_avg": float(np.nanmean(south)),
     }
 
     with open(cache_file, "w", encoding="utf-8") as file:
@@ -91,13 +97,13 @@ def build_monthly_mean_table(start_year, end_year):
                         "year": year,
                         "month": month,
                         "value": month_data["avg_radiation"],
+                        "north": month_data["north_avg"],
+                        "south": month_data["south_avg"],
                     }
                 )
-                print(f"OK: {year}-{month:02d}")
-            except Exception as error:
-                print(f"FEHLER bei {year}-{month:02d}: {error}")
+            except Exception:
                 continue
-        
+
     if not rows:
         raise ValueError("Keine Daten gefunden.")
 
@@ -108,12 +114,17 @@ def get_monthly_overlay_data(start_year, end_year):
     df = build_monthly_mean_table(start_year, end_year)
 
     monthly_mean = df.groupby("month", as_index=False)["value"].mean().sort_values("month")
+    north_mean = df.groupby("month", as_index=False)["north"].mean().sort_values("month")
+    south_mean = df.groupby("month", as_index=False)["south"].mean().sort_values("month")
+
     yearly_avg = float(df.groupby("year")["value"].sum().mean() / 12.0)
 
     return {
         "unit": "kWh/m²",
         "months": MONTH_LABELS,
-        "monthly_values": [round(v, 2) for v in monthly_mean["value"].tolist()],
+        "germany_values": [round(v, 2) for v in monthly_mean["value"].tolist()],
+        "north_values": [round(v, 2) for v in north_mean["north"].tolist()],
+        "south_values": [round(v, 2) for v in south_mean["south"].tolist()],
         "yearly_average_line": [round(yearly_avg, 2)] * 12,
     }
 

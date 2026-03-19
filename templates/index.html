@@ -60,22 +60,36 @@
         type: "line",
         data: {
           labels: data.months,
-          datasets: [
-            {
-              label: "Monthly Average",
-              data: data.monthly_values,
-              borderColor: "#2563eb",
-              backgroundColor: "#2563eb",
-              tension: 0.25
-            },
-            {
-              label: "Yearly Average",
-              data: data.yearly_average_line,
-              borderColor: "#6b7280",
-              borderDash: [6, 6],
-              pointRadius: 0
-            }
-          ]
+        datasets: [
+          {
+            label: "Germany",
+            data: data.germany_values,
+            borderColor: "#2563eb",
+            backgroundColor: "#2563eb",
+            tension: 0.25
+          },
+          {
+            label: "North",
+            data: data.north_values,
+            borderColor: "#0f766e",
+            backgroundColor: "#0f766e",
+            tension: 0.25
+          },
+          {
+            label: "South",
+            data: data.south_values,
+            borderColor: "#dc2626",
+            backgroundColor: "#dc2626",
+            tension: 0.25
+          },
+          {
+            label: "Yearly Average",
+            data: data.yearly_average_line,
+            borderColor: "#6b7280",
+            borderDash: [6, 6],
+            pointRadius: 0
+          }
+        ]
         },
         options: {
           responsive: true,

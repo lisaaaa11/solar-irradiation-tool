@@ -1,27 +1,12 @@
 from flask import Flask, render_template, request, jsonify
-from dwd_service import load_catalog, load_month, load_block_grid, load_cell_block_timeseries
+from dwd_service import load_block_grid, load_cell_block_timeseries
 
 app = Flask(__name__)
 
 
 @app.route("/")
 def index():
-    catalog = load_catalog()
-
-    months = []
-    all_years = set()
-
-    for entry in catalog:
-        months.append(
-            {
-                "label": f"{entry['year']}-{entry['month']:02d}",
-                "year": entry["year"],
-                "month": entry["month"],
-            }
-        )
-        all_years.add(entry["year"])
-
-    all_years = sorted(list(all_years))
+    all_years = list(range(1991, 2025))  # oder dynamischer, falls du es anders willst
 
     blocks = []
     if all_years:
@@ -40,22 +25,7 @@ def index():
             )
             start += 5
 
-    return render_template("index.html", months=months, blocks=blocks)
-
-
-@app.route("/api/month-data")
-def month_data():
-    year = request.args.get("year", type=int)
-    month = request.args.get("month", type=int)
-
-    if year is None or month is None:
-        return jsonify({"error": "year und month sind erforderlich"}), 400
-
-    try:
-        data = load_month(year, month)
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return render_template("index.html", blocks=blocks)
 
 
 @app.route("/api/block-grid")

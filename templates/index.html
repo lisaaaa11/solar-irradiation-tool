@@ -14,22 +14,6 @@
     </p>
 
     <section class="card">
-      <h2>Monatsdaten</h2>
-      <label for="monthSelect">Monat auswählen</label>
-      <div class="controls">
-        <select id="monthSelect">
-          {% for item in months %}
-            <option value="{{ item.year }}-{{ item.month }}">
-              {{ item.label }}
-            </option>
-          {% endfor %}
-        </select>
-
-        <button id="loadMonthButton">Monatsdaten laden</button>
-      </div>
-    </section>
-
-    <section class="card">
       <h2>5-Jahres-Heatmap</h2>
       <label for="blockSelect">Zeitraum auswählen</label>
       <div class="controls">
@@ -71,37 +55,6 @@
     let currentMax = null;
     let selectedStartYear = null;
     let selectedEndYear = null;
-
-    async function loadMonthData() {
-      const select = document.getElementById("monthSelect");
-      const result = document.getElementById("result");
-      const value = select.value;
-
-      const [year, month] = value.split("-");
-
-      result.innerHTML = "<p>Lade Monatsdaten ...</p>";
-
-      try {
-        const response = await fetch(`/api/month-data?year=${year}&month=${month}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          result.innerHTML = `<p class="error">Fehler: ${data.error}</p>`;
-          return;
-        }
-
-        result.innerHTML = `
-          <div class="result-grid">
-            <div><strong>Jahr</strong><br>${data.year}</div>
-            <div><strong>Monat</strong><br>${data.month}</div>
-            <div><strong>Einheit</strong><br>${data.unit}</div>
-            <div><strong>Durchschnitt</strong><br>${data.avg_radiation.toFixed(2)} ${data.unit}</div>
-          </div>
-        `;
-      } catch (error) {
-        result.innerHTML = `<p class="error">Fehler beim Laden der Monatsdaten.</p>`;
-      }
-    }
 
     function flattenValidValues(grid) {
       const values = [];
@@ -409,7 +362,6 @@
       });
     }
 
-    document.getElementById("loadMonthButton").addEventListener("click", loadMonthData);
     document.getElementById("loadBlockButton").addEventListener("click", loadBlockGrid);
 
     setupCanvasHover();

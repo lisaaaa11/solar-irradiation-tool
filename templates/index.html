@@ -9,9 +9,7 @@
 <body>
   <main class="container">
     <h1>Solar Irradiation Tool</h1>
-    <p class="subtitle">
-      Globalstrahlung aus der offenen CDC-Datenplattform des DWD
-    </p>
+    <p class="subtitle">Globalstrahlung aus der offenen CDC-Datenplattform des DWD</p>
 
     <section class="card">
       <h2>5-Jahres-Heatmap</h2>
@@ -19,20 +17,10 @@
       <div class="controls">
         <select id="blockSelect">
           {% for block in blocks %}
-            <option value="{{ block.start_year }}-{{ block.end_year }}">
-              {{ block.label }}
-            </option>
+            <option value="{{ block.start_year }}-{{ block.end_year }}">{{ block.label }}</option>
           {% endfor %}
         </select>
-
         <button id="loadBlockButton">Heatmap laden</button>
-      </div>
-    </section>
-
-    <section class="card">
-      <h2>Ergebnis</h2>
-      <div id="result">
-        <p>Noch keine Daten geladen.</p>
       </div>
     </section>
 
@@ -43,31 +31,32 @@
     </section>
 
     <section class="card">
+      <h2>Ergebnis</h2>
+      <div id="result"><p>Noch keine Daten geladen.</p></div>
+    </section>
+
+    <section class="card">
       <h2>Zeitreihe</h2>
       <p id="chartInfo">Noch keine Rasterzelle ausgewählt.</p>
       <canvas id="timeseriesCanvas"></canvas>
     </section>
+
   </main>
 
   <script>
+    const result = document.getElementById("result");
+    const blockSelect = document.getElementById("blockSelect");
+    const heatmapCanvas = document.getElementById("heatmapCanvas");
+    const timeseriesCanvas = document.getElementById("timeseriesCanvas");
+    const chartInfo = document.getElementById("chartInfo");
+    const tooltip = document.getElementById("tooltip");
+
     let currentGrid = null;
-    let currentMin = null;
-    let currentMax = null;
     let selectedStartYear = null;
     let selectedEndYear = null;
 
     function flattenValidValues(grid) {
-      const values = [];
-
-      for (const row of grid) {
-        for (const value of row) {
-          if (value !== null && !Number.isNaN(value)) {
-            values.push(value);
-          }
-        }
-      }
-
-      return values;
+      return grid.flat().filter(value => value !== null && !Number.isNaN(value));
     }
 
     function getPercentile(sortedValues, percentile) {
@@ -86,12 +75,10 @@
 
         if (t >= a.pos && t <= b.pos) {
           const localT = (t - a.pos) / (b.pos - a.pos);
-
           const r = Math.round(a.color[0] + (b.color[0] - a.color[0]) * localT);
           const g = Math.round(a.color[1] + (b.color[1] - a.color[1]) * localT);
-          const bCol = Math.round(a.color[2] + (b.color[2] - a.color[2]) * localT);
-
-          return `rgb(${r},${g},${bCol})`;
+          const blue = Math.round(a.color[2] + (b.color[2] - a.color[2]) * localT);
+          return `rgb(${r},${g},${blue})`;
         }
       }
 
@@ -104,8 +91,7 @@
         return "rgb(240, 240, 240)";
       }
 
-      const t = clamp((value - min) / (max - min), 0, 1);
-
+      const t = clamp((value - min) / (max - min || 1), 0, 1);
       const colorStops = [
         { pos: 0.00, color: [49, 54, 149] },
         { pos: 0.20, color: [69, 117, 180] },
@@ -120,44 +106,31 @@
     }
 
     function drawHeatmap(grid) {
-      const canvas = document.getElementById("heatmapCanvas");
-      const ctx = canvas.getContext("2d");
-
+      const ctx = heatmapCanvas.getContext("2d");
       const rows = grid.length;
       const cols = grid[0].length;
 
-      const scale = 1;
-      canvas.width = cols * scale;
-      canvas.height = rows * scale;
+      heatmapCanvas.width = cols;
+      heatmapCanvas.height = rows;
 
       const validValues = flattenValidValues(grid).sort((a, b) => a - b);
-
-      if (validValues.length === 0) {
-        return;
-      }
+      if (!validValues.length) return;
 
       const min = getPercentile(validValues, 5);
       const max = getPercentile(validValues, 95);
 
       currentGrid = grid;
-      currentMin = min;
-      currentMax = max;
 
       for (let y = 0; y < rows; y++) {
         for (let x = 0; x < cols; x++) {
-          const value = grid[y][x];
-          ctx.fillStyle = getColor(value, min, max);
-          ctx.fillRect(x * scale, y * scale, scale, scale);
+          ctx.fillStyle = getColor(grid[y][x], min, max);
+          ctx.fillRect(x, y, 1, 1);
         }
       }
     }
 
     async function loadBlockGrid() {
-      const value = document.getElementById("blockSelect").value;
-      const result = document.getElementById("result");
-
-      const [startYear, endYear] = value.split("-");
-
+      const [startYear, endYear] = blockSelect.value.split("-");
       result.innerHTML = "<p>Lade 5-Jahres-Heatmap ...</p>";
 
       try {
@@ -182,13 +155,11 @@
 
         drawHeatmap(data.grid);
       } catch (error) {
-        result.innerHTML = `<p class="error">Fehler beim Laden der Heatmap.</p>`;
+        result.innerHTML = '<p class="error">Fehler beim Laden der Heatmap.</p>';
       }
     }
 
     async function loadCellTimeseries(x, y) {
-      const chartInfo = document.getElementById("chartInfo");
-
       if (!selectedStartYear || !selectedEndYear) {
         chartInfo.textContent = "Bitte zuerst eine 5-Jahres-Heatmap laden.";
         return;
@@ -208,163 +179,202 @@
         }
 
         chartInfo.textContent =
-          `Zeitreihe für ${data.start_year}-${data.end_year}, Zelle x=${data.x}, y=${data.y}`;
+          `Zeitreihe ${data.start_year}-${data.end_year}, Zelle x=${data.x}, y=${data.y} · Blau: Zelle · Grau gestrichelt: globaler Mittelwert`;
 
-        drawTimeseries(data.years, data.values);
+        drawTimeseries(data.years, data.values, data.global_values, data.unit);
       } catch (error) {
         chartInfo.textContent = "Fehler beim Laden der Zeitreihe.";
       }
+}
+
+    function chartX(index, total, width, padding) {
+      return padding + (index / (total - 1 || 1)) * (width - 2 * padding);
     }
 
-    function drawTimeseries(years, values) {
-      const canvas = document.getElementById("timeseriesCanvas");
-      const ctx = canvas.getContext("2d");
+    function chartY(value, min, max, height, padding) {
+      return height - padding - ((value - min) / (max - min || 1)) * (height - 2 * padding);
+    }
 
+    function drawTimeseries(years, values, globalValues = [], unit = "kWh/m²") {
+      const ctx = timeseriesCanvas.getContext("2d");
       const width = 900;
       const height = 320;
-      const padding = 40;
+      const paddingLeft = 60;
+      const paddingRight = 40;
+      const paddingTop = 40;
+      const paddingBottom = 40;
 
-      canvas.width = width;
-      canvas.height = height;
-
+      timeseriesCanvas.width = width;
+      timeseriesCanvas.height = height;
       ctx.clearRect(0, 0, width, height);
 
       const validValues = values.filter(v => v !== null && !Number.isNaN(v));
-      if (validValues.length === 0) {
-        return;
-      }
+      const validGlobalValues = globalValues.filter(v => v !== null && !Number.isNaN(v));
 
-      const min = Math.min(...validValues);
-      const max = Math.max(...validValues);
+      if (!validValues.length) return;
+
+      let min = Math.min(...validValues, ...(validGlobalValues.length ? validGlobalValues : []));
+      let max = Math.max(...validValues, ...(validGlobalValues.length ? validGlobalValues : []));
+
+      const range = max - min || 1;
+      min -= range * 0.1;
+      max += range * 0.1;
 
       ctx.strokeStyle = "#333";
       ctx.lineWidth = 1;
-
       ctx.beginPath();
-      ctx.moveTo(padding, padding);
-      ctx.lineTo(padding, height - padding);
-      ctx.lineTo(width - padding, height - padding);
+      ctx.moveTo(paddingLeft, paddingTop);
+      ctx.lineTo(paddingLeft, height - paddingBottom);
+      ctx.lineTo(width - paddingRight, height - paddingBottom);
       ctx.stroke();
 
+      ctx.save();
+      ctx.translate(18, height / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "center";
       ctx.fillStyle = "#333";
-      ctx.font = "12px Arial";
+      ctx.font = "bold 12px Arial";
+      ctx.fillText(`${unit}/Jahr`, 0, 0);
+      ctx.restore();
 
-      years.forEach((year, i) => {
-        const x = padding + (i / (years.length - 1 || 1)) * (width - 2 * padding);
-        ctx.fillText(String(year), x - 12, height - padding + 18);
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#333";
+      ctx.font = "11px Arial";
+
+      years.forEach((year, index) => {
+        const x = paddingLeft + (index / (years.length - 1 || 1)) * (width - paddingLeft - paddingRight);
+        ctx.fillText(String(year), x, height - paddingBottom + 18);
       });
+
+      const ticks = 5;
+      ctx.textAlign = "right";
+      ctx.font = "11px Arial";
+
+      for (let i = 0; i <= ticks; i++) {
+        const value = min + ((max - min) / ticks) * i;
+        const y = height - paddingBottom - ((value - min) / (max - min || 1)) * (height - paddingTop - paddingBottom);
+
+        ctx.strokeStyle = "#e5e7eb";
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, y);
+        ctx.lineTo(width - paddingRight, y);
+        ctx.stroke();
+
+        ctx.fillStyle = "#333";
+        ctx.fillText(value.toFixed(0), paddingLeft - 8, y + 4);
+      }
+
+      if (globalValues && globalValues.length) {
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.55)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        let started = false;
+        globalValues.forEach((value, index) => {
+          if (value === null || Number.isNaN(value)) return;
+
+          const x = paddingLeft + (index / (years.length - 1 || 1)) * (width - paddingLeft - paddingRight);
+          const y = height - paddingBottom - ((value - min) / (max - min || 1)) * (height - paddingTop - paddingBottom);
+
+          if (!started) {
+            ctx.moveTo(x, y);
+            started = true;
+          } else {
+            ctx.lineTo(x, y);
+          }
+        });
+
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
 
       ctx.strokeStyle = "#2563eb";
       ctx.lineWidth = 2;
       ctx.beginPath();
 
-      values.forEach((value, i) => {
+      let started = false;
+      values.forEach((value, index) => {
         if (value === null || Number.isNaN(value)) return;
 
-        const x = padding + (i / (years.length - 1 || 1)) * (width - 2 * padding);
-        const y = height - padding - ((value - min) / (max - min || 1)) * (height - 2 * padding);
+        const x = paddingLeft + (index / (years.length - 1 || 1)) * (width - paddingLeft - paddingRight);
+        const y = height - paddingBottom - ((value - min) / (max - min || 1)) * (height - paddingTop - paddingBottom);
 
-        if (i === 0) {
+        if (!started) {
           ctx.moveTo(x, y);
+          started = true;
         } else {
           ctx.lineTo(x, y);
         }
       });
-
       ctx.stroke();
 
       ctx.fillStyle = "#dc2626";
-      values.forEach((value, i) => {
+      values.forEach((value, index) => {
         if (value === null || Number.isNaN(value)) return;
 
-        const x = padding + (i / (years.length - 1 || 1)) * (width - 2 * padding);
-        const y = height - padding - ((value - min) / (max - min || 1)) * (height - 2 * padding);
+        const x = paddingLeft + (index / (years.length - 1 || 1)) * (width - paddingLeft - paddingRight);
+        const y = height - paddingBottom - ((value - min) / (max - min || 1)) * (height - paddingTop - paddingBottom);
 
         ctx.beginPath();
-        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
         ctx.fill();
       });
+
+      ctx.fillStyle = "#333";
+      ctx.font = "12px Arial";
+      ctx.textAlign = "left";
+      ctx.fillText("Blau: Rasterzelle", paddingLeft, paddingTop - 12);
+      ctx.fillText("Grau gestrichelt: globaler Mittelwert", paddingLeft + 140, paddingTop - 12);
     }
 
-    function setupCanvasHover() {
-      const canvas = document.getElementById("heatmapCanvas");
-      const tooltip = document.getElementById("tooltip");
+    function getCanvasCell(event) {
+      if (!currentGrid) return null;
 
-      canvas.addEventListener("mousemove", (event) => {
-        if (!currentGrid) return;
+      const rect = heatmapCanvas.getBoundingClientRect();
+      const scaleX = heatmapCanvas.width / rect.width;
+      const scaleY = heatmapCanvas.height / rect.height;
+      const x = Math.floor((event.clientX - rect.left) * scaleX);
+      const y = Math.floor((event.clientY - rect.top) * scaleY);
 
-        const rect = canvas.getBoundingClientRect();
+      if (y < 0 || y >= currentGrid.length || x < 0 || x >= currentGrid[0].length) {
+        return null;
+      }
 
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
+      const value = currentGrid[y][x];
+      if (value === null || Number.isNaN(value)) return null;
 
-        const x = Math.floor((event.clientX - rect.left) * scaleX);
-        const y = Math.floor((event.clientY - rect.top) * scaleY);
+      return { x, y, value };
+    }
 
-        if (
-          y < 0 ||
-          y >= currentGrid.length ||
-          x < 0 ||
-          x >= currentGrid[0].length
-        ) {
-          tooltip.style.display = "none";
-          return;
-        }
+    heatmapCanvas.addEventListener("mousemove", (event) => {
+      const cell = getCanvasCell(event);
 
-        const value = currentGrid[y][x];
-
-        if (value === null || Number.isNaN(value)) {
-          tooltip.style.display = "none";
-          return;
-        }
-
-        tooltip.style.display = "block";
-        tooltip.style.left = `${event.pageX + 12}px`;
-        tooltip.style.top = `${event.pageY + 12}px`;
-        tooltip.innerHTML = `
-          <strong>Wert</strong><br>
-          ${value.toFixed(2)} kWh/m²<br>
-          Zelle: x=${x}, y=${y}
-        `;
-      });
-
-      canvas.addEventListener("mouseleave", () => {
+      if (!cell) {
         tooltip.style.display = "none";
-      });
+        return;
+      }
 
-      canvas.addEventListener("click", (event) => {
-        if (!currentGrid) return;
+      tooltip.style.display = "block";
+      tooltip.style.left = `${event.pageX + 12}px`;
+      tooltip.style.top = `${event.pageY + 12}px`;
+      tooltip.innerHTML = `
+        <strong>Wert</strong><br>
+        ${cell.value.toFixed(2)} kWh/m²/Jahr<br>
+        Zelle: x=${cell.x}, y=${cell.y}
+      `;
+    });
 
-        const rect = canvas.getBoundingClientRect();
+    heatmapCanvas.addEventListener("mouseleave", () => {
+      tooltip.style.display = "none";
+    });
 
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-
-        const x = Math.floor((event.clientX - rect.left) * scaleX);
-        const y = Math.floor((event.clientY - rect.top) * scaleY);
-
-        if (
-          y < 0 ||
-          y >= currentGrid.length ||
-          x < 0 ||
-          x >= currentGrid[0].length
-        ) {
-          return;
-        }
-
-        const value = currentGrid[y][x];
-
-        if (value === null || Number.isNaN(value)) {
-          return;
-        }
-
-        loadCellTimeseries(x, y);
-      });
-    }
+    heatmapCanvas.addEventListener("click", (event) => {
+      const cell = getCanvasCell(event);
+      if (cell) loadCellTimeseries(cell.x, cell.y);
+    });
 
     document.getElementById("loadBlockButton").addEventListener("click", loadBlockGrid);
-
-    setupCanvasHover();
   </script>
 </body>
 </html>

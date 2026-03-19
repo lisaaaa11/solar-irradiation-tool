@@ -55,20 +55,19 @@ button {
   color: #b91c1c;
 }
 
-#heatmapCanvas {
+canvas {
   width: 100%;
   max-width: 900px;
   border: 1px solid #ddd;
-  image-rendering: pixelated;
   display: block;
 }
 
+#heatmapCanvas {
+  image-rendering: pixelated;
+}
+
 #timeseriesCanvas {
-  width: 100%;
-  max-width: 900px;
-  border: 1px solid #ddd;
   background: white;
-  display: block;
   margin-top: 12px;
 }
 

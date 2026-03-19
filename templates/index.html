@@ -5,385 +5,145 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Solar Irradiation Tool</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <main class="container">
-    <section class="container">
-    <h1>Solar Irradiation Tool</h1>
-    <p class="subtitle">
-        Basierend auf den monatlichen Sonneneinstrahlungsdaten aus der 
-        <a href="https://opendata.dwd.de/climate_environment/CDC/grids_germany/monthly/radiation_global/" target="_blank" rel="noopener noreferrer">
-            offenen Dateninfrastruktur des DWD
-        </a>
-    </p>
-    </section>
-
     <section class="card">
-      <h2>Auswahl des 5-Jahres-Intervalls</h2>
-      <p>Die in der Datenbank vorhandenen Monate werden im 5-jährigen Abstand gruppiert. Für jede Gruppe steht das Generieren einer Heatmap zur Verfügung, die deutschlandweit anzeigt, wie hoch die Sonneneinstrahlung im gewählten Zeitintervall war. Durch Hovern über die Heatmap kann man den lokalen Average der zugehörigen Koordinate erhalten.</p>
-      
-      <label for="blockSelect">Zeitraum auswählen</label>
+      <h1>Solar Irradiation Tool</h1>
+      <p class="subtitle">Monthly Insights auf Basis der DWD-Daten</p>
+
       <div class="controls">
-        <select id="blockSelect">
-          {% for block in blocks %}
-            <option value="{{ block.start_year }}-{{ block.end_year }}">{{ block.label }}</option>
-          {% endfor %}
-        </select>
-        <button id="loadBlockButton">Heatmap laden</button>
+        <div>
+          <label for="startYear">Startjahr</label>
+          <input id="startYear" type="number" value="{{ default_start }}">
+        </div>
+        <div>
+          <label for="endYear">Endjahr</label>
+          <input id="endYear" type="number" value="{{ default_end }}">
+        </div>
+        <div class="button-wrap">
+          <button id="loadButton">Laden</button>
+        </div>
       </div>
     </section>
 
     <section class="card">
-      <h2>Heatmap</h2>
-      <canvas id="heatmapCanvas"></canvas>
-      <div id="tooltip" class="tooltip" style="display: none;"></div>
+      <h2>Monthly Trend vs Yearly Average</h2>
+      <canvas id="overlayChart"></canvas>
     </section>
 
     <section class="card">
-      <h2>Insights zum ausgewählten Zeitraum</h2>
-      <div id="result"><p>Noch keine Daten geladen.</p></div>
+      <h2>Seasonal Variability Heatmap</h2>
+      <div id="heatmapTable"></div>
     </section>
-
-    <section class="card">
-      <h2>Zeitreihe</h2>
-      <p id="chartInfo">Noch keine Rasterzelle ausgewählt.</p>
-      <canvas id="timeseriesCanvas"></canvas>
-    </section>
-
   </main>
 
   <script>
-    const result = document.getElementById("result");
-    const blockSelect = document.getElementById("blockSelect");
-    const heatmapCanvas = document.getElementById("heatmapCanvas");
-    const timeseriesCanvas = document.getElementById("timeseriesCanvas");
-    const chartInfo = document.getElementById("chartInfo");
-    const tooltip = document.getElementById("tooltip");
+    const startYearInput = document.getElementById("startYear");
+    const endYearInput = document.getElementById("endYear");
+    const loadButton = document.getElementById("loadButton");
 
-    let currentGrid = null;
-    let selectedStartYear = null;
-    let selectedEndYear = null;
+    let overlayChart = null;
 
-    function flattenValidValues(grid) {
-      return grid.flat().filter(value => value !== null && !Number.isNaN(value));
+    async function fetchJson(url) {
+      const response = await fetch(url);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Fehler beim Laden");
+      return data;
     }
 
-    function getPercentile(sortedValues, percentile) {
-      const index = Math.floor((percentile / 100) * (sortedValues.length - 1));
-      return sortedValues[index];
-    }
+    function renderOverlayChart(data) {
+      if (overlayChart) overlayChart.destroy();
 
-    function clamp(value, min, max) {
-      return Math.max(min, Math.min(max, value));
-    }
-
-    function interpolateColor(stops, t) {
-      for (let i = 0; i < stops.length - 1; i++) {
-        const a = stops[i];
-        const b = stops[i + 1];
-
-        if (t >= a.pos && t <= b.pos) {
-          const localT = (t - a.pos) / (b.pos - a.pos);
-          const r = Math.round(a.color[0] + (b.color[0] - a.color[0]) * localT);
-          const g = Math.round(a.color[1] + (b.color[1] - a.color[1]) * localT);
-          const blue = Math.round(a.color[2] + (b.color[2] - a.color[2]) * localT);
-          return `rgb(${r},${g},${blue})`;
+      overlayChart = new Chart(document.getElementById("overlayChart"), {
+        type: "line",
+        data: {
+          labels: data.months,
+          datasets: [
+            {
+              label: "Monthly Average",
+              data: data.monthly_values,
+              borderColor: "#2563eb",
+              backgroundColor: "#2563eb",
+              tension: 0.25
+            },
+            {
+              label: "Yearly Average",
+              data: data.yearly_average_line,
+              borderColor: "#6b7280",
+              borderDash: [6, 6],
+              pointRadius: 0
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: "top" }
+          },
+          scales: {
+            y: {
+              title: {
+                display: true,
+                text: data.unit
+              }
+            }
+          }
         }
-      }
-
-      const last = stops[stops.length - 1].color;
-      return `rgb(${last[0]},${last[1]},${last[2]})`;
-    }
-
-    function getColor(value, min, max) {
-      if (value === null || Number.isNaN(value)) {
-        return "rgb(240, 240, 240)";
-      }
-
-      const t = clamp((value - min) / (max - min || 1), 0, 1);
-      const colorStops = [
-        { pos: 0.00, color: [49, 54, 149] },
-        { pos: 0.20, color: [69, 117, 180] },
-        { pos: 0.40, color: [102, 194, 165] },
-        { pos: 0.60, color: [171, 221, 164] },
-        { pos: 0.75, color: [255, 255, 191] },
-        { pos: 0.88, color: [253, 174, 97] },
-        { pos: 1.00, color: [215, 25, 28] }
-      ];
-
-      return interpolateColor(colorStops, t);
-    }
-
-    function drawHeatmap(grid) {
-      const ctx = heatmapCanvas.getContext("2d");
-      const rows = grid.length;
-      const cols = grid[0].length;
-
-      heatmapCanvas.width = cols;
-      heatmapCanvas.height = rows;
-
-      const validValues = flattenValidValues(grid).sort((a, b) => a - b);
-      if (!validValues.length) return;
-
-      const min = getPercentile(validValues, 5);
-      const max = getPercentile(validValues, 95);
-
-      currentGrid = grid;
-
-      for (let y = 0; y < rows; y++) {
-        for (let x = 0; x < cols; x++) {
-          ctx.fillStyle = getColor(grid[y][x], min, max);
-          ctx.fillRect(x, y, 1, 1);
-        }
-      }
-    }
-
-    async function loadBlockGrid() {
-      const [startYear, endYear] = blockSelect.value.split("-");
-      result.innerHTML = "<p>Lade 5-Jahres-Heatmap ...</p>";
-
-      try {
-        const response = await fetch(`/api/block-grid?start_year=${startYear}&end_year=${endYear}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          result.innerHTML = `<p class="error">Fehler: ${data.error}</p>`;
-          return;
-        }
-
-        selectedStartYear = Number(startYear);
-        selectedEndYear = Number(endYear);
-
-        result.innerHTML = `
-          <div class="result-grid">
-            <div><strong>Zeitraum</strong><br>${data.start_year}-${data.end_year}</div>
-            <div><strong>Einheit</strong><br>${data.unit}</div>
-            <div><strong>Rastergröße</strong><br>${data.ncols} × ${data.nrows}</div>
-          </div>
-        `;
-
-        drawHeatmap(data.grid);
-      } catch (error) {
-        result.innerHTML = '<p class="error">Fehler beim Laden der Heatmap.</p>';
-      }
-    }
-
-    async function loadCellTimeseries(x, y) {
-      if (!selectedStartYear || !selectedEndYear) {
-        chartInfo.textContent = "Bitte zuerst eine 5-Jahres-Heatmap laden.";
-        return;
-      }
-
-      chartInfo.textContent = `Lade Zeitreihe für Zelle x=${x}, y=${y} ...`;
-
-      try {
-        const response = await fetch(
-          `/api/cell-timeseries?start_year=${selectedStartYear}&end_year=${selectedEndYear}&x=${x}&y=${y}`
-        );
-        const data = await response.json();
-
-        if (!response.ok) {
-          chartInfo.textContent = `Fehler: ${data.error}`;
-          return;
-        }
-
-        chartInfo.textContent =
-          `Zeitreihe ${data.start_year}-${data.end_year}, Zelle x=${data.x}, y=${data.y} · Blau: Zelle · Grau gestrichelt: globaler Mittelwert`;
-
-        drawTimeseries(data.years, data.values, data.global_values, data.unit);
-      } catch (error) {
-        chartInfo.textContent = "Fehler beim Laden der Zeitreihe.";
-      }
-}
-
-    function chartX(index, total, width, padding) {
-      return padding + (index / (total - 1 || 1)) * (width - 2 * padding);
-    }
-
-    function chartY(value, min, max, height, padding) {
-      return height - padding - ((value - min) / (max - min || 1)) * (height - 2 * padding);
-    }
-
-    function drawTimeseries(years, values, globalValues = [], unit = "kWh/m²") {
-      const ctx = timeseriesCanvas.getContext("2d");
-      const width = 900;
-      const height = 320;
-      const paddingLeft = 60;
-      const paddingRight = 40;
-      const paddingTop = 40;
-      const paddingBottom = 40;
-
-      timeseriesCanvas.width = width;
-      timeseriesCanvas.height = height;
-      ctx.clearRect(0, 0, width, height);
-
-      const validValues = values.filter(v => v !== null && !Number.isNaN(v));
-      const validGlobalValues = globalValues.filter(v => v !== null && !Number.isNaN(v));
-
-      if (!validValues.length) return;
-
-      let min = Math.min(...validValues, ...(validGlobalValues.length ? validGlobalValues : []));
-      let max = Math.max(...validValues, ...(validGlobalValues.length ? validGlobalValues : []));
-
-      const range = max - min || 1;
-      min -= range * 0.1;
-      max += range * 0.1;
-
-      ctx.strokeStyle = "#333";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(paddingLeft, paddingTop);
-      ctx.lineTo(paddingLeft, height - paddingBottom);
-      ctx.lineTo(width - paddingRight, height - paddingBottom);
-      ctx.stroke();
-
-      ctx.save();
-      ctx.translate(18, height / 2);
-      ctx.rotate(-Math.PI / 2);
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#333";
-      ctx.font = "bold 12px Arial";
-      ctx.fillText(`${unit}/Jahr`, 0, 0);
-      ctx.restore();
-
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#333";
-      ctx.font = "11px Arial";
-
-      years.forEach((year, index) => {
-        const x = paddingLeft + (index / (years.length - 1 || 1)) * (width - paddingLeft - paddingRight);
-        ctx.fillText(String(year), x, height - paddingBottom + 18);
       });
+    }
 
-      const ticks = 5;
-      ctx.textAlign = "right";
-      ctx.font = "11px Arial";
+    function colorForValue(value, min, max) {
+      const t = (value - min) / ((max - min) || 1);
+      const x = Math.max(0, Math.min(1, t));
+      const r = Math.round(235 - x * 120);
+      const g = Math.round(245 - x * 110);
+      const b = Math.round(255 - x * 20);
+      return `rgb(${r}, ${g}, ${b})`;
+    }
 
-      for (let i = 0; i <= ticks; i++) {
-        const value = min + ((max - min) / ticks) * i;
-        const y = height - paddingBottom - ((value - min) / (max - min || 1)) * (height - paddingTop - paddingBottom);
+    function renderHeatmapTable(data) {
+      const container = document.getElementById("heatmapTable");
+      const flatValues = data.values.flat().filter(v => v !== null);
+      const min = Math.min(...flatValues);
+      const max = Math.max(...flatValues);
 
-        ctx.strokeStyle = "#e5e7eb";
-        ctx.beginPath();
-        ctx.moveTo(paddingLeft, y);
-        ctx.lineTo(width - paddingRight, y);
-        ctx.stroke();
-
-        ctx.fillStyle = "#333";
-        ctx.fillText(value.toFixed(0), paddingLeft - 8, y + 4);
+      let html = '<table class="heatmap"><thead><tr><th>Jahr</th>';
+      for (const month of data.months) {
+        html += `<th>${month}</th>`;
       }
+      html += "</tr></thead><tbody>";
 
-      if (globalValues && globalValues.length) {
-        ctx.setLineDash([6, 4]);
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.55)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-
-        let started = false;
-        globalValues.forEach((value, index) => {
-          if (value === null || Number.isNaN(value)) return;
-
-          const x = paddingLeft + (index / (years.length - 1 || 1)) * (width - paddingLeft - paddingRight);
-          const y = height - paddingBottom - ((value - min) / (max - min || 1)) * (height - paddingTop - paddingBottom);
-
-          if (!started) {
-            ctx.moveTo(x, y);
-            started = true;
+      data.years.forEach((year, rowIndex) => {
+        html += `<tr><th>${year}</th>`;
+        data.values[rowIndex].forEach(value => {
+          if (value === null) {
+            html += '<td class="empty">–</td>';
           } else {
-            ctx.lineTo(x, y);
+            html += `<td style="background:${colorForValue(value, min, max)}">${value}</td>`;
           }
         });
-
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-
-      ctx.strokeStyle = "#2563eb";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-
-      let started = false;
-      values.forEach((value, index) => {
-        if (value === null || Number.isNaN(value)) return;
-
-        const x = paddingLeft + (index / (years.length - 1 || 1)) * (width - paddingLeft - paddingRight);
-        const y = height - paddingBottom - ((value - min) / (max - min || 1)) * (height - paddingTop - paddingBottom);
-
-        if (!started) {
-          ctx.moveTo(x, y);
-          started = true;
-        } else {
-          ctx.lineTo(x, y);
-        }
-      });
-      ctx.stroke();
-
-      ctx.fillStyle = "#dc2626";
-      values.forEach((value, index) => {
-        if (value === null || Number.isNaN(value)) return;
-
-        const x = paddingLeft + (index / (years.length - 1 || 1)) * (width - paddingLeft - paddingRight);
-        const y = height - paddingBottom - ((value - min) / (max - min || 1)) * (height - paddingTop - paddingBottom);
-
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, Math.PI * 2);
-        ctx.fill();
+        html += "</tr>";
       });
 
-      ctx.fillStyle = "#333";
-      ctx.font = "12px Arial";
-      ctx.textAlign = "left";
-      ctx.fillText("Blau: Rasterzelle", paddingLeft, paddingTop - 12);
-      ctx.fillText("Grau gestrichelt: globaler Mittelwert", paddingLeft + 140, paddingTop - 12);
+      html += "</tbody></table>";
+      container.innerHTML = html;
     }
 
-    function getCanvasCell(event) {
-      if (!currentGrid) return null;
+    async function loadCharts() {
+      const startYear = startYearInput.value;
+      const endYear = endYearInput.value;
 
-      const rect = heatmapCanvas.getBoundingClientRect();
-      const scaleX = heatmapCanvas.width / rect.width;
-      const scaleY = heatmapCanvas.height / rect.height;
-      const x = Math.floor((event.clientX - rect.left) * scaleX);
-      const y = Math.floor((event.clientY - rect.top) * scaleY);
+      const overlayData = await fetchJson(`/api/monthly-overlay?start_year=${startYear}&end_year=${endYear}`);
+      renderOverlayChart(overlayData);
 
-      if (y < 0 || y >= currentGrid.length || x < 0 || x >= currentGrid[0].length) {
-        return null;
-      }
-
-      const value = currentGrid[y][x];
-      if (value === null || Number.isNaN(value)) return null;
-
-      return { x, y, value };
+      const heatmapData = await fetchJson(`/api/seasonal-heatmap?start_year=${startYear}&end_year=${endYear}`);
+      renderHeatmapTable(heatmapData);
     }
 
-    heatmapCanvas.addEventListener("mousemove", (event) => {
-      const cell = getCanvasCell(event);
-
-      if (!cell) {
-        tooltip.style.display = "none";
-        return;
-      }
-
-      tooltip.style.display = "block";
-      tooltip.style.left = `${event.pageX + 12}px`;
-      tooltip.style.top = `${event.pageY + 12}px`;
-      tooltip.innerHTML = `
-        <strong>Wert</strong><br>
-        ${cell.value.toFixed(2)} kWh/m²/Jahr<br>
-        Zelle: x=${cell.x}, y=${cell.y}
-      `;
-    });
-
-    heatmapCanvas.addEventListener("mouseleave", () => {
-      tooltip.style.display = "none";
-    });
-
-    heatmapCanvas.addEventListener("click", (event) => {
-      const cell = getCanvasCell(event);
-      if (cell) loadCellTimeseries(cell.x, cell.y);
-    });
-
-    document.getElementById("loadBlockButton").addEventListener("click", loadBlockGrid);
+    loadButton.addEventListener("click", loadCharts);
+    //loadCharts();
   </script>
 </body>
 </html>

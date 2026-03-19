@@ -1,0 +1,85 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  background: #f5f7fb;
+  color: #1f2937;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+
+h1 {
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  margin-top: 0;
+  color: #6b7280;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 20px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+select,
+button {
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+button {
+  cursor: pointer;
+}
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 16px;
+}
+
+.error {
+  color: #b91c1c;
+}
+
+#heatmapCanvas {
+  width: 100%;
+  max-width: 900px;
+  border: 1px solid #ddd;
+  image-rendering: pixelated;
+  display: block;
+}
+
+#timeseriesCanvas {
+  width: 100%;
+  max-width: 900px;
+  border: 1px solid #ddd;
+  background: white;
+  display: block;
+  margin-top: 12px;
+}
+
+.tooltip {
+  position: absolute;
+  background: rgba(17, 24, 39, 0.95);
+  color: white;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  pointer-events: none;
+  z-index: 10;
+  white-space: nowrap;
+}

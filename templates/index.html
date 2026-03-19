@@ -8,11 +8,20 @@
 </head>
 <body>
   <main class="container">
+    <section class="container">
     <h1>Solar Irradiation Tool</h1>
-    <p class="subtitle">Globalstrahlung aus der offenen CDC-Datenplattform des DWD</p>
+    <p class="subtitle">
+        Basierend auf den monatlichen Sonneneinstrahlungsdaten aus der 
+        <a href="https://opendata.dwd.de/climate_environment/CDC/grids_germany/monthly/radiation_global/" target="_blank" rel="noopener noreferrer">
+            offenen Dateninfrastruktur des DWD
+        </a>
+    </p>
+    </section>
 
     <section class="card">
-      <h2>5-Jahres-Heatmap</h2>
+      <h2>Auswahl des 5-Jahres-Intervalls</h2>
+      <p>Die in der Datenbank vorhandenen Monate werden im 5-jährigen Abstand gruppiert. Für jede Gruppe steht das Generieren einer Heatmap zur Verfügung, die deutschlandweit anzeigt, wie hoch die Sonneneinstrahlung im gewählten Zeitintervall war. Durch Hovern über die Heatmap kann man den lokalen Average der zugehörigen Koordinate erhalten.</p>
+      
       <label for="blockSelect">Zeitraum auswählen</label>
       <div class="controls">
         <select id="blockSelect">
@@ -31,7 +40,7 @@
     </section>
 
     <section class="card">
-      <h2>Ergebnis</h2>
+      <h2>Insights zum ausgewählten Zeitraum</h2>
       <div id="result"><p>Noch keine Daten geladen.</p></div>
     </section>
 

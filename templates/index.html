@@ -52,18 +52,18 @@
         Positive Werte bedeuten überdurchschnittliche, negative Werte unterdurchschnittliche Einstrahlung.
       </p>
       <p class="chart-copy-sub">
-        So lässt sich schnell erkennen, in welchen Monaten das Analysejahr vom klimatologischen Mittel abweicht. Sofern eine PV-Anlage also im Analysejahr schlechter performt, muss das nicht an der Anlage liegen, sondern könnte auch an einem ungewöhnlich trüben Jahr liegen. Umgekehrt könnte ein gutes Jahr die Leistung einer schlecht geplanten Anlage verschleiern.
+        So lässt sich schnell erkennen, in welchen Monaten das Analysejahr vom klimatologischen Mittel abweicht. Sofern eine PV-Anlage also im Analysejahr in einem Monat schlechter performt, muss das nicht an der Anlage liegen, sondern könnte auch an einem ungewöhnlich kühlen Monat liegen. Umgekehrt könnte ein guter Monat die Leistung einer schlecht geplanten Anlage verschleiern.
       </p>
       <canvas id="anomalyChart"></canvas>
+      <p class="chart-copy">
+        Positive Werte bedeuten überdurchschnittliche, negative Werte unterdurchschnittliche Einstrahlung.
+        Je dunkler die Balken, desto stärker ist die Abweichung vom langjährigen Mittel.
+      </p>
+      <p class="chart-copy-sub">
+        Ab etwa ±10 % ist ein wetterbedingter Einfluss auf die PV-Produktion in der Regel deutlich relevant.
+      </p>
     </section>
 
-    <section class="card hidden" id="heatmapSection">
-      <h2>Anomaly Heatmap</h2>
-      <p class="chart-copy">
-        Blau = unter Durchschnitt, Rot = über Durchschnitt.
-      </p>
-      <div id="heatmapTable"></div>
-    </section>
   </main>
 
   <script>
@@ -73,7 +73,6 @@
     const referenceEndInput = document.getElementById("referenceEnd");
     const loadButton = document.getElementById("loadButton");
     const anomalySection = document.getElementById("anomalySection");
-    const heatmapSection = document.getElementById("heatmapSection");
 
     let anomalyChart = null;
 
@@ -89,9 +88,9 @@
     }
 
     function renderAnomalyChart(data) {
-      if (anomalyChart) anomalyChart.destroy();
+  if (anomalyChart) anomalyChart.destroy();
 
-      anomalyChart = new Chart(document.getElementById("anomalyChart"), {
+  anomalyChart = new Chart(document.getElementById("anomalyChart"), {
         type: "bar",
         data: {
           labels: data.months,
@@ -99,12 +98,8 @@
             {
               label: `Abweichung ${data.analysis_year} vs ${data.reference_period}`,
               data: data.anomaly_values,
-              backgroundColor: data.anomaly_values.map(value =>
-                value >= 0 ? "rgba(220, 38, 38, 0.75)" : "rgba(37, 99, 235, 0.75)"
-              ),
-              borderColor: data.anomaly_values.map(value =>
-                value >= 0 ? "rgb(220, 38, 38)" : "rgb(37, 99, 235)"
-              ),
+              backgroundColor: data.anomaly_pct_values.map(getBarColorFromPct),
+              borderColor: data.anomaly_pct_values.map(getBorderColorFromPct),
               borderWidth: 1
             }
           ]
@@ -112,7 +107,19 @@
         options: {
           responsive: true,
           plugins: {
-            legend: { position: "top" }
+            legend: { position: "top" },
+            tooltip: {
+              callbacks: {
+                label: function(context) {
+                  const i = context.dataIndex;
+                  const abs = data.anomaly_values[i];
+                  const pct = data.anomaly_pct_values[i];
+                  const impact = data.impact_levels[i];
+
+                  return `Abweichung: ${abs} ${data.unit} (${pct}%) – ${impact}`;
+                }
+              }
+            }
           },
           scales: {
             y: {
@@ -124,41 +131,6 @@
           }
         }
       });
-    }
-
-    function colorForAnomaly(value, maxAbs) {
-      const intensity = Math.min(Math.abs(value) / (maxAbs || 1), 1);
-
-      if (value >= 0) {
-        const red = Math.round(255 - intensity * 25);
-        const green = Math.round(245 - intensity * 180);
-        const blue = Math.round(245 - intensity * 180);
-        return `rgb(${red}, ${green}, ${blue})`;
-      }
-
-      const red = Math.round(245 - intensity * 180);
-      const green = Math.round(245 - intensity * 180);
-      const blue = Math.round(255 - intensity * 25);
-      return `rgb(${red}, ${green}, ${blue})`;
-    }
-
-    function renderHeatmapTable(data) {
-      const container = document.getElementById("heatmapTable");
-      const maxAbs = Math.max(...data.values.map(v => Math.abs(v)), 1);
-
-      let html = '<table class="heatmap"><thead><tr><th>Jahr</th>';
-      for (const month of data.months) {
-        html += `<th>${month}</th>`;
-      }
-      html += "</tr></thead><tbody>";
-
-      html += `<tr><th>${data.year}</th>`;
-      for (const value of data.values) {
-        html += `<td style="background:${colorForAnomaly(value, maxAbs)}">${value}</td>`;
-      }
-      html += "</tr></tbody></table>";
-
-      container.innerHTML = html;
     }
 
     async function loadCharts() {
@@ -178,17 +150,29 @@
         );
         renderAnomalyChart(anomalyData);
 
-        const heatmapData = await fetchJson(
-          `/api/anomaly-heatmap?region=${region}&analysis_year=${analysisYear}&reference_start=${referenceStart}&reference_end=${referenceEnd}`
-        );
-        renderHeatmapTable(heatmapData);
 
         anomalySection.classList.remove("hidden");
-        heatmapSection.classList.remove("hidden");
 
       } catch (err) {
         shakeButton();
       }
+    }
+
+    function getBarColorFromPct(pct) {
+      const abs = Math.abs(pct);
+
+      let alpha = 0.2;
+      if (abs >= 20) alpha = 0.95;
+      else if (abs >= 10) alpha = 0.75;
+      else if (abs >= 5) alpha = 0.5;
+
+      return pct >= 0
+        ? `rgba(220, 38, 38, ${alpha})`
+        : `rgba(37, 99, 235, ${alpha})`;
+    }
+
+    function getBorderColorFromPct(pct) {
+      return pct >= 0 ? "rgb(220, 38, 38)" : "rgb(37, 99, 235)";
     }
 
     function shakeButton() {

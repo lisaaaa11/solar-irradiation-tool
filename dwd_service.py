@@ -1,57 +1,77 @@
 import pandas as pd
 
 MONTH_LABELS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
+VALID_REGIONS = {"germany", "north", "south"}
 
 df = pd.read_csv("data/monthly_means.csv")
 
 
-def get_monthly_overlay_data(start_year, end_year):
-    filtered = df[(df["year"] >= start_year) & (df["year"] <= end_year)]
+def validate_inputs(region, analysis_year, reference_start, reference_end):
+    if region not in VALID_REGIONS:
+        raise ValueError("Ungültiger Standort. Erlaubt sind: germany, north, south.")
 
-    if filtered.empty:
-        raise ValueError("Keine Daten für den gewählten Zeitraum gefunden.")
+    if reference_start > reference_end:
+        raise ValueError("Der Referenzzeitraum ist ungültig.")
 
-    monthly = (
-        filtered.groupby("month", as_index=False)[["germany", "north", "south"]]
+    if reference_start <= analysis_year <= reference_end:
+        raise ValueError("Das Analysejahr sollte nicht im Referenzzeitraum liegen.")
+
+
+def get_monthly_anomaly_data(region, analysis_year, reference_start, reference_end):
+    validate_inputs(region, analysis_year, reference_start, reference_end)
+
+    analysis = df[df["year"] == analysis_year][["month", region]].sort_values("month")
+    if analysis.empty:
+        raise ValueError("Keine Daten für das gewählte Analysejahr gefunden.")
+
+    baseline = (
+        df[(df["year"] >= reference_start) & (df["year"] <= reference_end)]
+        .groupby("month", as_index=False)[region]
         .mean()
         .sort_values("month")
     )
+    if baseline.empty:
+        raise ValueError("Keine Daten für den gewählten Referenzzeitraum gefunden.")
 
-    yearly_avg = filtered.groupby("year")["germany"].sum().mean() / 12.0
+    merged = analysis.merge(baseline, on="month", suffixes=("_actual", "_baseline"))
+    merged["anomaly"] = merged[f"{region}_actual"] - merged[f"{region}_baseline"]
 
     return {
         "unit": "kWh/m²",
         "months": MONTH_LABELS,
-        "germany_values": monthly["germany"].round(2).tolist(),
-        "north_values": monthly["north"].round(2).tolist(),
-        "south_values": monthly["south"].round(2).tolist(),
-        "yearly_average_line": [round(yearly_avg, 2)] * 12,
+        "region": region,
+        "analysis_year": analysis_year,
+        "reference_period": f"{reference_start}-{reference_end}",
+        "actual_values": merged[f"{region}_actual"].round(2).tolist(),
+        "baseline_values": merged[f"{region}_baseline"].round(2).tolist(),
+        "anomaly_values": merged["anomaly"].round(2).tolist(),
     }
 
 
-def get_seasonal_heatmap_data(start_year, end_year):
-    filtered = df[(df["year"] >= start_year) & (df["year"] <= end_year)]
+def get_anomaly_heatmap_data(region, analysis_year, reference_start, reference_end):
+    validate_inputs(region, analysis_year, reference_start, reference_end)
 
-    if filtered.empty:
-        raise ValueError("Keine Daten für den gewählten Zeitraum gefunden.")
+    analysis = df[df["year"] == analysis_year][["month", region]].sort_values("month")
+    if analysis.empty:
+        raise ValueError("Keine Daten für das gewählte Analysejahr gefunden.")
 
-    pivot = (
-        filtered.pivot(index="year", columns="month", values="germany")
-        .sort_index()
-        .reindex(columns=range(1, 13))
+    baseline = (
+        df[(df["year"] >= reference_start) & (df["year"] <= reference_end)]
+        .groupby("month", as_index=False)[region]
+        .mean()
+        .sort_values("month")
     )
+    if baseline.empty:
+        raise ValueError("Keine Daten für den gewählten Referenzzeitraum gefunden.")
 
-    values = []
-    for year in pivot.index:
-        row = []
-        for month in pivot.columns:
-            value = pivot.loc[year, month]
-            row.append(None if pd.isna(value) else round(float(value), 2))
-        values.append(row)
+    merged = analysis.merge(baseline, on="month", suffixes=("_actual", "_baseline"))
+    merged["anomaly"] = merged[f"{region}_actual"] - merged[f"{region}_baseline"]
 
     return {
         "unit": "kWh/m²",
-        "years": [int(year) for year in pivot.index.tolist()],
         "months": MONTH_LABELS,
-        "values": values,
+        "year": analysis_year,
+        "region": region,
+        "reference_period": f"{reference_start}-{reference_end}",
+        "values": [round(value, 2) for value in merged["anomaly"].tolist()],
     }

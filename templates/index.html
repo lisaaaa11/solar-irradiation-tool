@@ -3,98 +3,109 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Solar Irradiation Tool</title>
+  <title>Solar Irradiation Anomaly Tool</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <main class="container">
     <section class="card">
-      <h1>Solar Irradiation Tool</h1>
-      <p class="subtitle">Monthly Insights auf Basis der DWD-Daten</p>
+      <h1>Solar Irradiation Anomaly Tool</h1>
+      <p class="subtitle">Vergleicht ein Analysejahr mit einem langfristigen Referenzzeitraum</p>
 
       <div class="controls">
         <div>
-          <label for="startYear">Analysezeitraum von</label>
-          <input id="startYear" type="number" value="{{ default_start }}">
+          <label for="region">Region</label>
+          <select id="region">
+            <option value="" disabled selected>Bitte Standort wählen</option>
+            <option value="germany">Deutschland</option>
+            <option value="north">Nord</option>
+            <option value="south">Süd</option>
+          </select>
         </div>
+
         <div>
-          <label for="endYear">bis</label>
-          <input id="endYear" type="number" value="{{ default_end }}">
+          <label for="analysisYear">Analysejahr</label>
+          <input id="analysisYear" type="number" placeholder="z. B. 2024">
         </div>
+
+        <div>
+          <label for="referenceStart">Referenz von</label>
+          <input id="referenceStart" type="number" placeholder="z. B. 1991">
+        </div>
+
+        <div>
+          <label for="referenceEnd">Referenz bis</label>
+          <input id="referenceEnd" type="number" placeholder="z. B. 2020">
+        </div>
+
         <div class="button-wrap">
-          <button id="loadButton">Laden</button>
+          <button id="loadButton">Analysieren</button>
         </div>
+        <div id="errorBox" class="error hidden"></div>
       </div>
     </section>
 
-    <section class="card">
-      <h2>Monthly Trend vs Yearly Average</h2>
+    <section class="card hidden" id="anomalySection">
+      <h2>Monthly Anomalies vs Baseline</h2>
       <p class="chart-copy">
-        Durchschnittliche monatliche Einstrahlung im gewählten Zeitraum
-        im Vergleich zum geglätteten yearly average.
+        Positive Werte bedeuten überdurchschnittliche, negative Werte unterdurchschnittliche Einstrahlung.
       </p>
-      <canvas id="overlayChart"></canvas>
+      <p class="chart-copy-sub">
+        So lässt sich schnell erkennen, in welchen Monaten das Analysejahr vom klimatologischen Mittel abweicht. Sofern eine PV-Anlage also im Analysejahr schlechter performt, muss das nicht an der Anlage liegen, sondern könnte auch an einem ungewöhnlich trüben Jahr liegen. Umgekehrt könnte ein gutes Jahr die Leistung einer schlecht geplanten Anlage verschleiern.
+      </p>
+      <canvas id="anomalyChart"></canvas>
     </section>
 
-    <section class="card">
-      <h2>Seasonal Variability Heatmap</h2>
+    <section class="card hidden" id="heatmapSection">
+      <h2>Anomaly Heatmap</h2>
       <p class="chart-copy">
-        Zeilen = Jahre, Spalten = Monate, Werte = monatliche mittlere Globalstrahlung in kWh/m².
+        Blau = unter Durchschnitt, Rot = über Durchschnitt.
       </p>
       <div id="heatmapTable"></div>
     </section>
   </main>
 
   <script>
-    const startYearInput = document.getElementById("startYear");
-    const endYearInput = document.getElementById("endYear");
+    const regionInput = document.getElementById("region");
+    const analysisYearInput = document.getElementById("analysisYear");
+    const referenceStartInput = document.getElementById("referenceStart");
+    const referenceEndInput = document.getElementById("referenceEnd");
     const loadButton = document.getElementById("loadButton");
+    const anomalySection = document.getElementById("anomalySection");
+    const heatmapSection = document.getElementById("heatmapSection");
 
-    let overlayChart = null;
+    let anomalyChart = null;
 
     async function fetchJson(url) {
       const response = await fetch(url);
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Fehler beim Laden");
+
+      if (!response.ok) {
+        throw new Error(data.error || "Unbekannter Fehler");
+      }
+
       return data;
     }
 
-    function renderOverlayChart(data) {
-      if (overlayChart) overlayChart.destroy();
+    function renderAnomalyChart(data) {
+      if (anomalyChart) anomalyChart.destroy();
 
-      overlayChart = new Chart(document.getElementById("overlayChart"), {
-        type: "line",
+      anomalyChart = new Chart(document.getElementById("anomalyChart"), {
+        type: "bar",
         data: {
           labels: data.months,
           datasets: [
             {
-              label: "Germany",
-              data: data.germany_values,
-              borderColor: "#2563eb",
-              backgroundColor: "#2563eb",
-              tension: 0.25
-            },
-            {
-              label: "North",
-              data: data.north_values,
-              borderColor: "#0f766e",
-              backgroundColor: "#0f766e",
-              tension: 0.25
-            },
-            {
-              label: "South",
-              data: data.south_values,
-              borderColor: "#dc2626",
-              backgroundColor: "#dc2626",
-              tension: 0.25
-            },
-            {
-              label: "Yearly Average",
-              data: data.yearly_average_line,
-              borderColor: "#6b7280",
-              borderDash: [6, 6],
-              pointRadius: 0
+              label: `Abweichung ${data.analysis_year} vs ${data.reference_period}`,
+              data: data.anomaly_values,
+              backgroundColor: data.anomaly_values.map(value =>
+                value >= 0 ? "rgba(220, 38, 38, 0.75)" : "rgba(37, 99, 235, 0.75)"
+              ),
+              borderColor: data.anomaly_values.map(value =>
+                value >= 0 ? "rgb(220, 38, 38)" : "rgb(37, 99, 235)"
+              ),
+              borderWidth: 1
             }
           ]
         },
@@ -107,7 +118,7 @@
             y: {
               title: {
                 display: true,
-                text: data.unit
+                text: `Abweichung (${data.unit})`
               }
             }
           }
@@ -115,20 +126,25 @@
       });
     }
 
-    function colorForValue(value, min, max) {
-      const t = (value - min) / ((max - min) || 1);
-      const x = Math.max(0, Math.min(1, t));
-      const r = Math.round(235 - x * 120);
-      const g = Math.round(245 - x * 110);
-      const b = Math.round(255 - x * 20);
-      return `rgb(${r}, ${g}, ${b})`;
+    function colorForAnomaly(value, maxAbs) {
+      const intensity = Math.min(Math.abs(value) / (maxAbs || 1), 1);
+
+      if (value >= 0) {
+        const red = Math.round(255 - intensity * 25);
+        const green = Math.round(245 - intensity * 180);
+        const blue = Math.round(245 - intensity * 180);
+        return `rgb(${red}, ${green}, ${blue})`;
+      }
+
+      const red = Math.round(245 - intensity * 180);
+      const green = Math.round(245 - intensity * 180);
+      const blue = Math.round(255 - intensity * 25);
+      return `rgb(${red}, ${green}, ${blue})`;
     }
 
     function renderHeatmapTable(data) {
       const container = document.getElementById("heatmapTable");
-      const flatValues = data.values.flat().filter(v => v !== null);
-      const min = Math.min(...flatValues);
-      const max = Math.max(...flatValues);
+      const maxAbs = Math.max(...data.values.map(v => Math.abs(v)), 1);
 
       let html = '<table class="heatmap"><thead><tr><th>Jahr</th>';
       for (const month of data.months) {
@@ -136,35 +152,50 @@
       }
       html += "</tr></thead><tbody>";
 
-      data.years.forEach((year, rowIndex) => {
-        html += `<tr><th>${year}</th>`;
-        data.values[rowIndex].forEach(value => {
-          if (value === null) {
-            html += '<td class="empty">–</td>';
-          } else {
-            html += `<td style="background:${colorForValue(value, min, max)}">${value}</td>`;
-          }
-        });
-        html += "</tr>";
-      });
+      html += `<tr><th>${data.year}</th>`;
+      for (const value of data.values) {
+        html += `<td style="background:${colorForAnomaly(value, maxAbs)}">${value}</td>`;
+      }
+      html += "</tr></tbody></table>";
 
-      html += "</tbody></table>";
       container.innerHTML = html;
     }
 
     async function loadCharts() {
-      const startYear = startYearInput.value;
-      const endYear = endYearInput.value;
+      const region = regionInput.value;
+      const analysisYear = analysisYearInput.value;
+      const referenceStart = referenceStartInput.value;
+      const referenceEnd = referenceEndInput.value;
 
-      const overlayData = await fetchJson(`/api/monthly-overlay?start_year=${startYear}&end_year=${endYear}`);
-      renderOverlayChart(overlayData);
+      if (!region || !analysisYear || !referenceStart || !referenceEnd) {
+        shakeButton();
+        return;
+      }
 
-      const heatmapData = await fetchJson(`/api/seasonal-heatmap?start_year=${startYear}&end_year=${endYear}`);
-      renderHeatmapTable(heatmapData);
+      try {
+        const anomalyData = await fetchJson(
+          `/api/monthly-anomaly?region=${region}&analysis_year=${analysisYear}&reference_start=${referenceStart}&reference_end=${referenceEnd}`
+        );
+        renderAnomalyChart(anomalyData);
+
+        const heatmapData = await fetchJson(
+          `/api/anomaly-heatmap?region=${region}&analysis_year=${analysisYear}&reference_start=${referenceStart}&reference_end=${referenceEnd}`
+        );
+        renderHeatmapTable(heatmapData);
+
+        anomalySection.classList.remove("hidden");
+        heatmapSection.classList.remove("hidden");
+
+      } catch (err) {
+        shakeButton();
+      }
     }
 
+    function shakeButton() {
+      loadButton.classList.add("shake");
+      setTimeout(() => loadButton.classList.remove("shake"), 350);
+    }
     loadButton.addEventListener("click", loadCharts);
-    loadCharts();
   </script>
 </body>
 </html>

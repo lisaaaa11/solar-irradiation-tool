@@ -1,7 +1,7 @@
 import io
 import zipfile
 from pathlib import Path
-
+from datetime import date
 import numpy as np
 import pandas as pd
 import requests
@@ -73,8 +73,10 @@ def load_month(year, month):
 
 def main():
     rows = []
+    
+    current_year = date.today().year
 
-    for year in range(1991, 2025):
+    for year in range(1991, current_year + 1):
         for month in range(1, 13):
             print(f"Lade {year}-{month:02d} ...")
             result = load_month(year, month)

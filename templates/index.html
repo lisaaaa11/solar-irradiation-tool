@@ -15,11 +15,11 @@
 
       <div class="controls">
         <div>
-          <label for="startYear">Startjahr</label>
+          <label for="startYear">Analysezeitraum von</label>
           <input id="startYear" type="number" value="{{ default_start }}">
         </div>
         <div>
-          <label for="endYear">Endjahr</label>
+          <label for="endYear">bis</label>
           <input id="endYear" type="number" value="{{ default_end }}">
         </div>
         <div class="button-wrap">
@@ -30,11 +30,18 @@
 
     <section class="card">
       <h2>Monthly Trend vs Yearly Average</h2>
+      <p class="chart-copy">
+        Durchschnittliche monatliche Einstrahlung im gewählten Zeitraum
+        im Vergleich zum geglätteten yearly average.
+      </p>
       <canvas id="overlayChart"></canvas>
     </section>
 
     <section class="card">
       <h2>Seasonal Variability Heatmap</h2>
+      <p class="chart-copy">
+        Zeilen = Jahre, Spalten = Monate, Werte = monatliche mittlere Globalstrahlung in kWh/m².
+      </p>
       <div id="heatmapTable"></div>
     </section>
   </main>
@@ -60,36 +67,36 @@
         type: "line",
         data: {
           labels: data.months,
-        datasets: [
-          {
-            label: "Germany",
-            data: data.germany_values,
-            borderColor: "#2563eb",
-            backgroundColor: "#2563eb",
-            tension: 0.25
-          },
-          {
-            label: "North",
-            data: data.north_values,
-            borderColor: "#0f766e",
-            backgroundColor: "#0f766e",
-            tension: 0.25
-          },
-          {
-            label: "South",
-            data: data.south_values,
-            borderColor: "#dc2626",
-            backgroundColor: "#dc2626",
-            tension: 0.25
-          },
-          {
-            label: "Yearly Average",
-            data: data.yearly_average_line,
-            borderColor: "#6b7280",
-            borderDash: [6, 6],
-            pointRadius: 0
-          }
-        ]
+          datasets: [
+            {
+              label: "Germany",
+              data: data.germany_values,
+              borderColor: "#2563eb",
+              backgroundColor: "#2563eb",
+              tension: 0.25
+            },
+            {
+              label: "North",
+              data: data.north_values,
+              borderColor: "#0f766e",
+              backgroundColor: "#0f766e",
+              tension: 0.25
+            },
+            {
+              label: "South",
+              data: data.south_values,
+              borderColor: "#dc2626",
+              backgroundColor: "#dc2626",
+              tension: 0.25
+            },
+            {
+              label: "Yearly Average",
+              data: data.yearly_average_line,
+              borderColor: "#6b7280",
+              borderDash: [6, 6],
+              pointRadius: 0
+            }
+          ]
         },
         options: {
           responsive: true,
@@ -157,7 +164,7 @@
     }
 
     loadButton.addEventListener("click", loadCharts);
-    //loadCharts();
+    loadCharts();
   </script>
 </body>
 </html>

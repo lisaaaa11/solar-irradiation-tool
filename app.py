@@ -20,8 +20,6 @@ def monthly_overlay():
     try:
         return jsonify(get_monthly_overlay_data(start_year, end_year))
     except Exception as error:
-        import traceback
-        traceback.print_exc()
         return jsonify({"error": str(error)}), 500
 
 
@@ -36,8 +34,6 @@ def seasonal_heatmap():
     try:
         return jsonify(get_seasonal_heatmap_data(start_year, end_year))
     except Exception as error:
-        import traceback
-        traceback.print_exc()
         return jsonify({"error": str(error)}), 500
 
 

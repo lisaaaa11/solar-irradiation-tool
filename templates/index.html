@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Solar Irradiation Anomaly Tool</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <title>Solar Irradiation Deviation Tool</title>
+  <link rel="stylesheet" href="/static/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
   <main class="container">
     <section class="card">
-      <h1>Solar Irradiation Anomaly Tool</h1>
-      <p class="subtitle">Vergleicht ein Analysejahr mit einem langfristigen Referenzzeitraum (Dabei stehen die Jahre 1991 - 2026 zur Verfügung). Das Analysejahr darf nicht im Referenzzeitraum liegen.</p>
+      <h1>Tool zur Visualisierung von Abweichungen der Sonneneinstrahlung</h1>
+      <p class="subtitle">Vergleicht ein Analysejahr mit einem langfristigen Referenzzeitraum (Dabei stehen die Jahre 1991 - <span id="currentYear"></span> zur Verfügung). Das Analysejahr darf nicht im Referenzzeitraum liegen.</p>
 
       <div class="controls">
         <div>
@@ -46,15 +46,12 @@
       </div>
     </section>
 
-    <section class="card hidden" id="anomalySection">
-      <h2>Monthly Anomalies vs Baseline</h2>
-      <p class="chart-copy">
-        Positive Werte bedeuten überdurchschnittliche, negative Werte unterdurchschnittliche Einstrahlung.
-      </p>
+    <section class="card hidden" id="deviationSection">
+      <h2>Monatliche Abweichungen vs. Referenzzeitraum</h2>
       <p class="chart-copy-sub">
         So lässt sich schnell erkennen, in welchen Monaten das Analysejahr vom klimatologischen Mittel abweicht. Sofern eine PV-Anlage also im Analysejahr in einem Monat schlechter performt, muss das nicht an der Anlage liegen, sondern könnte auch an einem ungewöhnlich kühlen Monat liegen. Umgekehrt könnte ein guter Monat die Leistung einer schlecht geplanten Anlage verschleiern.
       </p>
-      <canvas id="anomalyChart"></canvas>
+      <canvas id="deviationChart"></canvas>
       <p class="chart-copy">
         Positive Werte bedeuten überdurchschnittliche, negative Werte unterdurchschnittliche Einstrahlung.
         Je dunkler die Balken, desto stärker ist die Abweichung vom langjährigen Mittel.
@@ -72,13 +69,13 @@
     const referenceStartInput = document.getElementById("referenceStart");
     const referenceEndInput = document.getElementById("referenceEnd");
     const loadButton = document.getElementById("loadButton");
-    const anomalySection = document.getElementById("anomalySection");
+    const deviationSection = document.getElementById("deviationSection");
 
-    let anomalyChart = null;
+    let deviationChart = null;
 
     async function fetchJson(url) {
-      const response = await fetch(url);
-      const data = await response.json();
+      const response = await fetch(url); //Monthly Deviation API aufrufen
+      const data = await response.json(); //Da kommen jetzt die Daten der Rückgabe der monthly_deviation-Funktion in app.py an, also die Daten aus dwd_service.py
 
       if (!response.ok) {
         throw new Error(data.error || "Unbekannter Fehler");
@@ -87,49 +84,49 @@
       return data;
     }
 
-    function renderAnomalyChart(data) {
-  if (anomalyChart) anomalyChart.destroy();
+    function renderDeviationChart(data) { //Bekommt ja die Daten aus fetchJson, also die Daten aus dwd_service.py und rendert damit den Chart
+      if (deviationChart) deviationChart.destroy();
 
-  anomalyChart = new Chart(document.getElementById("anomalyChart"), {
-        type: "bar",
-        data: {
-          labels: data.months,
-          datasets: [
-            {
-              label: `Abweichung ${data.analysis_year} vs ${data.reference_period}`,
-              data: data.anomaly_values,
-              backgroundColor: data.anomaly_pct_values.map(getBarColorFromPct),
-              borderColor: data.anomaly_pct_values.map(getBorderColorFromPct),
-              borderWidth: 1
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          plugins: {
-            legend: { position: "top" },
-            tooltip: {
-              callbacks: {
-                label: function(context) {
-                  const i = context.dataIndex;
-                  const abs = data.anomaly_values[i];
-                  const pct = data.anomaly_pct_values[i];
-                  const impact = data.impact_levels[i];
+      deviationChart = new Chart(document.getElementById("deviationChart"), {
+            type: "bar", //Balkendiagramm
+            data: {
+              labels: data.months,
+              datasets: [
+                {
+                  label: `Abweichung ${data.analysis_year} vs ${data.reference_period}`,
+                  data: data.deviation_values,
+                  backgroundColor: data.deviation_percentage_values.map(getBarColorFromPercentage),
+                  borderColor: data.deviation_percentage_values.map(getBorderColorFromPercentage),
+                  borderWidth: 1
+                }
+              ]
+            },
+            options: {
+              responsive: true, //Chart passt sich der Bildschirmgröße an
+              plugins: {
+                legend: { position: "top", labels: {boxWidth: 0,padding: 20} },
+                tooltip: {
+                  callbacks: {
+                    label: function(context) { //Wenn man über einen Balken hovert, dann steht da das:
+                      const i = context.dataIndex;
+                      const abs = data.deviation_values[i];
+                      const percentage = data.deviation_percentage_values[i];
+                      const deviation = data.deviation_levels[i];
 
-                  return `Abweichung: ${abs} ${data.unit} (${pct}%) – ${impact}`;
+                      return `Abweichung: ${abs} ${data.unit} (${percentage}%) – ${deviation}`;
+                    }
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  title: {
+                    display: true,
+                    text: `Abweichung (${data.unit})`
+                  }
                 }
               }
             }
-          },
-          scales: {
-            y: {
-              title: {
-                display: true,
-                text: `Abweichung (${data.unit})`
-              }
-            }
-          }
-        }
       });
     }
 
@@ -145,34 +142,34 @@
       }
 
       try {
-        const anomalyData = await fetchJson(
-          `/api/monthly-anomaly?region=${region}&analysis_year=${analysisYear}&reference_start=${referenceStart}&reference_end=${referenceEnd}`
+        const deviationData = await fetchJson(
+          `/api/monthly-deviation?region=${region}&analysis_year=${analysisYear}&reference_start=${referenceStart}&reference_end=${referenceEnd}`
         );
-        renderAnomalyChart(anomalyData);
+        renderDeviationChart(deviationData);
 
 
-        anomalySection.classList.remove("hidden");
+        deviationSection.classList.remove("hidden");
 
       } catch (err) {
         shakeButton();
       }
     }
 
-    function getBarColorFromPct(pct) {
-      const abs = Math.abs(pct);
+    function getBarColorFromPercentage(percentage) {
+      const abs = Math.abs(percentage);
 
       let alpha = 0.2;
       if (abs >= 20) alpha = 0.95;
       else if (abs >= 10) alpha = 0.75;
       else if (abs >= 5) alpha = 0.5;
 
-      return pct >= 0
+      return percentage >= 0
         ? `rgba(220, 38, 38, ${alpha})`
         : `rgba(37, 99, 235, ${alpha})`;
     }
 
-    function getBorderColorFromPct(pct) {
-      return pct >= 0 ? "rgb(220, 38, 38)" : "rgb(37, 99, 235)";
+    function getBorderColorFromPercentage(percentage) {
+      return percentage >= 0 ? "rgb(220, 38, 38)" : "rgb(37, 99, 235)";
     }
 
     function shakeButton() {
@@ -180,6 +177,7 @@
       setTimeout(() => loadButton.classList.remove("shake"), 350);
     }
     loadButton.addEventListener("click", loadCharts);
+    document.getElementById("currentYear").textContent = new Date().getFullYear();
   </script>
 </body>
 </html>

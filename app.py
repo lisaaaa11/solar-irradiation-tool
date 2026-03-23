@@ -1,22 +1,17 @@
-from flask import Flask, jsonify, render_template, request
-from dwd_service import get_monthly_anomaly_data
+from flask import Flask, jsonify, render_template, request #Webserver, JSON-Antworten aus Python-Daten, rendert HTML, HTTP-Anfragen
+from dwd_service import get_monthly_deviation_data, get_monthly_deviation_data
 
-app = Flask(__name__)
+app = Flask(__name__) #
 
 
-@app.route("/")
+@app.route("/") #Startseite
 def index():
-    return render_template(
-        "index.html",
-        default_analysis_year=2024,
-        default_reference_start=1991,
-        default_reference_end=2020,
-    )
+    return render_template("index.html")
 
 
-@app.route("/api/monthly-anomaly")
-def monthly_anomaly():
-    region = request.args.get("region", default="germany", type=str)
+@app.route("/api/monthly-deviation") #Wenn ein http-Request an diesen Endpunkt gesendet wird, führe monthly_deviation aus.  region, analysis_year, reference_start, reference_end
+def monthly_deviation():
+    region = request.args.get("region", type=str)
     analysis_year = request.args.get("analysis_year", type=int)
     reference_start = request.args.get("reference_start", type=int)
     reference_end = request.args.get("reference_end", type=int)
@@ -26,7 +21,7 @@ def monthly_anomaly():
 
     try:
         return jsonify(
-            get_monthly_anomaly_data(
+            get_monthly_deviation_data(
                 region=region,
                 analysis_year=analysis_year,
                 reference_start=reference_start,
